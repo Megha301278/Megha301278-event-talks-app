@@ -8,6 +8,8 @@ let currentSort = 'newest';
 // DOM Elements
 const notesGrid = document.getElementById('notes-grid');
 const refreshBtn = document.getElementById('btn-refresh');
+const exportCsvBtn = document.getElementById('btn-export-csv');
+const themeToggleBtn = document.getElementById('btn-theme-toggle');
 const searchInput = document.getElementById('search-input');
 const searchClear = document.getElementById('search-clear');
 const sortSelect = document.getElementById('sort-select');
@@ -28,6 +30,7 @@ const btnClearSelection = document.getElementById('btn-clear-selection');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+  initTheme();
   fetchReleaseNotes();
   setupEventListeners();
 });
@@ -35,6 +38,8 @@ document.addEventListener('DOMContentLoaded', () => {
 // Event Listeners Setup
 function setupEventListeners() {
   refreshBtn.addEventListener('click', fetchReleaseNotes);
+  exportCsvBtn.addEventListener('click', exportToCSV);
+  themeToggleBtn.addEventListener('click', toggleTheme);
   
   searchInput.addEventListener('input', (e) => {
     currentSearch = e.target.value.toLowerCase().trim();
@@ -464,4 +469,103 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+// Export filtered release notes to CSV
+function exportToCSV() {
+  if (releaseNotes.length === 0) return;
+  
+  // Apply current active filters and sort settings to export exact user view
+  let filtered = releaseNotes.filter(note => {
+    if (currentFilter !== 'all' && note.type.toLowerCase() !== currentFilter) {
+      return false;
+    }
+    if (currentSearch) {
+      const typeMatch = note.type.toLowerCase().includes(currentSearch);
+      const dateMatch = note.date_formatted.toLowerCase().includes(currentSearch);
+      const contentMatch = note.content_text.toLowerCase().includes(currentSearch);
+      return typeMatch || dateMatch || contentMatch;
+    }
+    return true;
+  });
+  
+  filtered.sort((a, b) => {
+    if (currentSort === 'newest') {
+      return b.date.localeCompare(a.date);
+    } else {
+      return a.date.localeCompare(b.date);
+    }
+  });
+
+  if (filtered.length === 0) {
+    alert("No notes found to export with the current filter settings.");
+    return;
+  }
+  
+  const headers = ["Date", "Type", "Description", "Link"];
+  const rows = filtered.map(note => [
+    note.date_formatted,
+    note.type,
+    note.content_text,
+    note.link
+  ]);
+  
+  const csvContent = [
+    headers.map(h => escapeCSVField(h)).join(","),
+    ...rows.map(row => row.map(cell => escapeCSVField(cell)).join(","))
+  ].join("\n");
+  
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  
+  const timestamp = new Date().toISOString().split('T')[0];
+  link.setAttribute("download", `bigquery_release_notes_${timestamp}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// Escape commas, double quotes, and newlines in CSV fields
+function escapeCSVField(field) {
+  if (field === null || field === undefined) {
+    return '""';
+  }
+  let stringValue = String(field);
+  if (stringValue.includes('"') || stringValue.includes(',') || stringValue.includes('\n') || stringValue.includes('\r')) {
+    stringValue = '"' + stringValue.replace(/"/g, '""') + '"';
+  }
+  return stringValue;
+}
+
+// Initialize Theme UI matching current body state
+function initTheme() {
+  const isLight = document.body.classList.contains('light-mode');
+  updateThemeUI(isLight);
+}
+
+// Toggle page color scheme overrides and save state
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light-mode');
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  updateThemeUI(isLight);
+}
+
+// Helper to switch SVGs and label descriptions
+function updateThemeUI(isLight) {
+  const moonIcons = document.querySelectorAll('.moon-icon');
+  const sunIcons = document.querySelectorAll('.sun-icon');
+  const themeText = document.getElementById('theme-text');
+  
+  if (isLight) {
+    moonIcons.forEach(el => el.style.display = 'none');
+    sunIcons.forEach(el => el.style.display = 'block');
+    if (themeText) themeText.innerText = 'Dark Mode';
+  } else {
+    moonIcons.forEach(el => el.style.display = 'block');
+    sunIcons.forEach(el => el.style.display = 'none');
+    if (themeText) themeText.innerText = 'Light Mode';
+  }
 }
